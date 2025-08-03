@@ -2,20 +2,18 @@ name: Check TOTO Carryovers
 
 on:
   schedule:
-    - cron: '37 5 * * *'  # JST 14:37 → UTC 05:37
-    - cron: '7 13 * * *'  # JST 22:07 → UTC 13:07
-  workflow_dispatch:      # 수동 실행 허용
+    - cron: '37 5 * * *'  # 매일 오후 2시 37분 JST (JST = UTC+9 → 05:37 UTC)
+    - cron: '7 13 * * *'  # 매일 오후 10시 07분 JST (JST = UTC+9 → 13:07 UTC)
+  workflow_dispatch:
 
 permissions:
   issues: write
 
 jobs:
-  carryover-check:
+  check-toto:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install beautifulsoup4 requests
 
-      - name: Run TOTO carryover extractor
+      - name: Run TOTO carryover checker
         run: python extract_toto_carryovers.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
