@@ -36,13 +36,6 @@ toto_names = ["toto", "mini toto-A", "mini toto-B", "toto GOAL3"]
 carryover_results = []
 table_index = 0
 
-def is_carryover_table(table):
-    rows = table.find_all("tr")
-    grid = [[c.get_text(strip=True) for c in row.find_all(["th", "td"])] for row in rows]
-    transposed = list(map(list, zip(*grid)))
-    header_flat = [item for sublist in transposed for item in sublist]
-    return any("等級" in cell for cell in header_flat) and any("次回への繰越金" in cell for cell in header_flat)
-
 for i, (date_str, _) in enumerate(sections):
     if date_str != target_date:
         continue
@@ -51,34 +44,47 @@ for i, (date_str, _) in enumerate(sections):
 
     while table_index < len(tables):
         table = tables[table_index]
-        table_index += 1
 
-        if not is_carryover_table(table):
-            print(f"⚠️ [무시] table_index {table_index - 1} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
+        # 유효한 당첨 결과 테이블인지 검사
+        is_valid = False
+        for row in table.find_all("tr"):
+            cells = [c.get_text(strip=True) for c in row.find_all(["th", "td"])]
+            if "1等" in cells or "次回への繰越金" in cells:
+                is_valid = True
+                break
+
+        if not is_valid:
+            print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
+            table_index += 1
             continue
 
-        # 유효한 이월금 테이블인 경우
+        # 유효한 경우 파싱 진행
         rows = table.find_all("tr")
-        grid = [[c.get_text(strip=True) for c in row.find_all(["th", "td"])] for row in rows]
-        transposed = list(map(list, zip(*grid)))
-        print("[🔍 전치 테이블 구조 확인]")
-        for row in transposed:
-            print(" | ".join(row))
+        grid = []
+        for row in rows:
+            cols = row.find_all(["th", "td"])
+            grid.append([c.get_text(strip=True) for c in cols])
 
         found = False
         carryover_amount = ""
 
+        # 전치
+t        transposed = list(map(list, zip(*grid)))
+        print("[🔍 전치 테이블 구조 확인]")
+        for t_row in transposed:
+            print(" | ".join(t_row))
+
         for col in transposed:
             if col[0] == "等級" and "1等" in col:
-                idx = col.index("1等")
+                index_1st = col.index("1等")
                 for row in grid:
-                    if row[0] == "次回への繰越金" and len(row) > idx:
-                        carryover = row[idx]
+                    if row[0] == "次回への繰越金" and len(row) > index_1st:
+                        carryover = row[index_1st]
                         print(f"1等 이월금: {carryover}")
                         if carryover != "0円":
                             found = True
                             carryover_amount = carryover
-                        break
+                            break
 
         if found:
             amount_num = int(carryover_amount.replace(",", "").replace("円", ""))
@@ -93,7 +99,9 @@ for i, (date_str, _) in enumerate(sections):
                 "short": short,
                 "table": table
             })
-        break  # carryover 테이블을 찾으면 해당 섹션 종료
+
+        table_index += 1
+        break  # 한 종목당 첫 유효 테이블만 처리
 
 # 이월금 결과 정리
 if carryover_results:
