@@ -1,118 +1,133 @@
-from bs4 import BeautifulSoup
 import requests
-from datetime import datetime
+from bs4 import BeautifulSoup
+import re
 import os
+from datetime import datetime
+from github import Github
 
-# 날짜 고정 (테스트용)
-target_date = "2025.08.02"
+# 🎯 타겟 날짜 (테스트용으로 고정, 실제 자동화 시에는 datetime.today().strftime('%Y.%m.%d') 사용)
+TARGET_DATE = "2025.08.02"
 
-# GitHub 설정
-github_repo = os.getenv("GITHUB_REPOSITORY")
-github_token = os.getenv("GITHUB_TOKEN")
-github_assignees = ["Koony2510"]
-github_mentions = ["Koony2510"]
+# 🎯 이월금 테이블 인식 키워드
+CARRYOVER_KEY = "次回への繰越金"
 
-# URL 설정
-url = "http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp"
-response = requests.get(url)
-soup = BeautifulSoup(response.content, "html.parser")
+# 🎯 GitHub 설정
+REPO_NAME = "사용자명/레포명"  # 실제 사용자 레포로 바꿔주세요
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-# 결과발표일 기준 섹션 구분
-sections = []
-for date_table in soup.find_all("table", class_="format1 mb5"):
-    if "結果発表日" in date_table.text:
-        result_date_td = date_table.find_all("td")[-1]
-        result_date_text = result_date_td.get_text(strip=True)
-        formatted_date = result_date_text.replace("年", ".").replace("月", ".").split("日")[0]
-        sections.append((formatted_date, date_table))
+def fetch_html():
+    url = "https://www.toto-dream.com/toto/result/"
+    res = requests.get(url)
+    res.encoding = "utf-8"
+    return BeautifulSoup(res.text, "html.parser")
 
-# 모든 kobetsu-format2 추출
-tables = soup.find_all("table", class_="kobetsu-format2 mb10")
+def extract_sections(soup):
+    return soup.select("div.section")
 
-print(f"\n📊 감지된 발표일 섹션 수: {len(sections)}")
-print(f"📊 감지된 결과 테이블 수: {len(tables)}\n")
+def extract_tables(soup):
+    return soup.select("table.typeTK")
 
-toto_names = ["toto", "mini toto-A", "mini toto-B", "toto GOAL3"]
-carryover_results = []
-table_index = 0
+def is_date_in_text(date, text):
+    return date in text.replace("/", ".")
 
-for i, (date_str, _) in enumerate(sections):
-    if date_str != target_date:
-        continue
+def transpose_table(table):
+    rows = table.find_all("tr")
+    grid = []
+    for row in rows:
+        cells = row.find_all(["td", "th"])
+        grid.append([cell.get_text(strip=True) for cell in cells])
+    return list(map(list, zip(*grid)))
 
-    print(f"\n🧩 [{toto_names[i]}] 結果発表日: {date_str}")
+def format_markdown_table(transposed):
+    headers = transposed[0]
+    rows = transposed[1:]
 
-    while table_index < len(tables):
-        table = tables[table_index]
-        rows = table.find_all("tr")
-        grid = [[col.get_text(strip=True) for col in row.find_all(["th", "td"])] for row in rows]
+    # |:---| 스타일과 함께 헤더 렌더링
+    md = "|               | " + " | ".join(headers[1:]) + " |\n"
+    md += "|:--------------| " + " | ".join([":" + "-" * max(len(col), 4) for col in headers[1:]]) + " |\n"
 
-        # 가로형 판별: 첫 번째 행에 1等, 2等 등이 있음
-        if "1等" in grid[0]:
-            print(f"[🔍 전치 테이블 구조 확인]")
-            for row in grid:
-                print(" | ".join(row))
-            header_row = grid[0]
-            index_1st = header_row.index("1等") if "1等" in header_row else -1
-            carryover_row = next((row for row in grid if row[0] == "次回への繰越金"), None)
+    for row in rows:
+        md += f"| {row[0]:<14} | " + " | ".join(f"{cell}" for cell in row[1:]) + " |\n"
+    return md
 
-            if index_1st != -1 and carryover_row and len(carryover_row) > index_1st:
-                carryover = carryover_row[index_1st]
-                print(f"1等 이월금: {carryover}")
-                if carryover != "0円":
-                    amount_num = int(carryover.replace(",", "").replace("円", ""))
-                    short = f"{amount_num // 100000000}億円" if amount_num >= 100000000 else f"{amount_num // 10000}万円"
+def extract_carryover_and_table(tables, announce_title, lotto_type):
+    for idx in range(len(tables)):
+        table = tables[idx]
+        transposed = transpose_table(table)
+        if any(CARRYOVER_KEY in row for row in transposed):
+            # ✅ 회차 추출 (제목에 포함)
+            match = re.search(r"第(\d+)回", transposed[0][0])
+            round_label = f"第{match.group(1)}回" if match else "回次不明"
 
-                    # 테이블 정렬 출력
-                    col_widths = [max(len(row[i]) if i < len(row) else 0 for row in grid) for i in range(len(grid[0]))]
-                    formatted = [" | ".join(cell.ljust(col_widths[idx]) for idx, cell in enumerate(row)) for row in grid]
+            # ✅ 이월금 파악
+            carryover_row = next((r for r in transposed if CARRYOVER_KEY in r[0]), None)
+            if not carryover_row:
+                return None
+            try:
+                amount_str = carryover_row[1].replace(",", "").replace("円", "")
+                amount = int(amount_str)
+            except Exception:
+                amount = 0
 
-                    carryover_results.append({
-                        "name": toto_names[i],
-                        "amount": carryover,
-                        "short": short,
-                        "table": formatted,
-                        "round": grid[0][0] if grid[0] else ""
-                    })
-            table_index += 1
-            break
-        else:
-            print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
-            print("[🔍 전치 테이블 구조 확인]")
-            for row in grid:
-                print(" | ".join(row))
-            table_index += 1
+            if amount > 0:
+                table_markdown = format_markdown_table(transposed)
+                return {
+                    "lotto_type": lotto_type,
+                    "carryover": amount,
+                    "round": round_label,
+                    "markdown": table_markdown,
+                    "announce_date": announce_title,
+                }
+    return None
 
-# 이월금 결과 정리
-if carryover_results:
-    issue_title = " / ".join([
-        f"{item['round']} {item['name']} {item['short']} 移越発生" for item in carryover_results
-    ])
+def create_github_issue_if_needed(result):
+    if not result:
+        print("✅ 해당 날짜에는 이월금이 없습니다.")
+        return
 
-    body_lines = []
-    for item in carryover_results:
-        body_lines.append(f"### 🎯 {item['round']} {item['name']} (次回への繰越金: {item['amount']})")
-        body_lines.extend(item["table"])
-        body_lines.append("")
+    title = f"{result['round']} {result['lotto_type']} {result['carryover'] // 10000:,}万円 繰越金発生"
+    body = (
+        f"🗓️ 発表日: **{result['announce_date']}**\n\n"
+        f"💰 **繰越金あり！**\n\n"
+        f"{result['markdown']}"
+    )
 
-    body_lines.append("📎 出처: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
 
-    if github_repo and github_token:
-        headers = {
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github+json"
-        }
-        payload = {
-            "title": issue_title,
-            "body": f"{' '.join([f'@{u}' for u in github_mentions])}\n\n" + "\n".join(body_lines),
-            "assignees": github_assignees
-        }
-        r = requests.post(f"https://api.github.com/repos/{github_repo}/issues", headers=headers, json=payload)
-        if r.status_code == 201:
-            print("\n✅ GitHub 이슈가 성공적으로 생성되었습니다.")
-        else:
-            print(f"\n⚠️ GitHub 이슈 생성 실패: {r.status_code} - {r.text}")
-    else:
-        print("\n⚠️ 환경변수 GITHUB_REPOSITORY 또는 GITHUB_TOKEN 이 설정되지 않았습니다.")
-else:
-    print("\n✅ 해당 날짜에는 이월금이 없습니다.")
+    # 중복 이슈 방지
+    existing_titles = [i.title for i in repo.get_issues(state='open')]
+    if title in existing_titles:
+        print("⚠️ 이미 동일한 이슈가 존재합니다. 생성하지 않음.")
+        return
+
+    issue = repo.create_issue(title=title, body=body)
+    print("✅ GitHub 이슈가 성공적으로 생성되었습니다.")
+    print(f"📌 {issue.html_url}")
+
+def main():
+    soup = fetch_html()
+    sections = extract_sections(soup)
+    tables = extract_tables(soup)
+
+    print(f"📊 감지된 발표일 섹션 수: {len(sections)}")
+    print(f"📊 감지된 결과 테이블 수: {len(tables)}\n")
+
+    for idx, sec in enumerate(sections):
+        title_text = sec.get_text(strip=True)
+        if not is_date_in_text(TARGET_DATE, title_text):
+            continue
+
+        # 종목 이름 추출
+        match = re.search(r"(toto|mini toto-A|mini toto-B|toto GOAL3)", title_text)
+        lotto_type = match.group(1) if match else f"종류불명_{idx}"
+
+        print(f"🧩 [{lotto_type}] 結果発表日: {TARGET_DATE}")
+
+        start_table_idx = idx * 2
+        local_tables = tables[start_table_idx:start_table_idx + 2]
+        result = extract_carryover_and_table(local_tables, TARGET_DATE, lotto_type)
+        create_github_issue_if_needed(result)
+
+if __name__ == "__main__":
+    main()
