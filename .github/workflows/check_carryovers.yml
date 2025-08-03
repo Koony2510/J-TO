@@ -2,9 +2,9 @@ name: Check TOTO Carryovers
 
 on:
   schedule:
-    - cron: '37 5 * * *'  # 예: 매일 오후 2시 37분 JST
-    - cron: '7 13 * * *'  # 예: 매일 오후 10시 7분 JST
-  workflow_dispatch:
+    - cron: '37 5 * * *'  # JST 14:37 → UTC 05:37
+    - cron: '7 13 * * *'  # JST 22:07 → UTC 13:07
+  workflow_dispatch:      # 수동 실행 허용
 
 permissions:
   issues: write
@@ -12,8 +12,10 @@ permissions:
 jobs:
   carryover-check:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
