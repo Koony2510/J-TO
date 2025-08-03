@@ -4,7 +4,10 @@ from datetime import datetime
 import os
 
 # 날짜 고정 (테스트용)
-target_date = "2025.08.02"
+target_date = datetime.today().strftime("%Y.%m.%d")
+# target_date = "2025.08.02"  # 테스트용 고정값
+# target_date = datetime.today().strftime("%Y.%m.%d")
+
 
 # GitHub 설정
 github_repo = os.getenv("GITHUB_REPOSITORY")
