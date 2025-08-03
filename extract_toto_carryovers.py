@@ -69,7 +69,7 @@ for i, (date_str, _) in enumerate(sections):
         carryover_amount = ""
 
         # 전치
-t        transposed = list(map(list, zip(*grid)))
+        transposed = list(map(list, zip(*grid)))
         print("[🔍 전치 테이블 구조 확인]")
         for t_row in transposed:
             print(" | ".join(t_row))
