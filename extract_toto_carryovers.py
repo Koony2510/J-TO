@@ -34,49 +34,40 @@ print(f"📊 감지된 결과 테이블 수: {len(tables)}\n")
 
 toto_names = ["toto", "mini toto-A", "mini toto-B", "toto GOAL3"]
 carryover_results = []
-
 table_index = 0
-section_index = 0
 
-while table_index + 1 < len(tables) and section_index < len(sections):
-    date_str, _ = sections[section_index]
-
+for i, (date_str, _) in enumerate(sections):
     if date_str != target_date:
-        table_index += 2
-        section_index += 1
         continue
 
-    print(f"\n🧩 [{toto_names[section_index]}] 結果発表日: {date_str}")
+    print(f"\n🧩 [{toto_names[i]}] 結果発表日: {date_str}")
 
-    table1 = tables[table_index]
-    table2 = tables[table_index + 1]
+    if table_index >= len(tables):
+        continue
 
-    # 첫 번째 테이블에서 정보 추출
-    rows = table1.find_all("tr")
+    table = tables[table_index]
+    rows = table.find_all("tr")
     grid = []
     for row in rows:
         cols = row.find_all(["th", "td"])
         grid.append([c.get_text(strip=True) for c in cols])
 
+    # 전치 및 디버깅 출력
+    transposed = list(map(list, zip(*grid)))
     print("[🔍 전치 테이블 구조 확인]")
-    for row in grid:
+    for row in transposed:
         print(" | ".join(row))
 
     found = False
     carryover_amount = ""
 
-    transposed = list(map(list, zip(*grid)))
-    for col in transposed:
-        if col[0] == "等級" and "1等" in col:
-            index_1st = col.index("1等")
-            for row in grid:
-                if row[0] == "次回への繰越金" and len(row) > index_1st:
-                    carryover = row[index_1st]
-                    print(f"1等 이월금: {carryover}")
-                    if carryover != "0円":
-                        found = True
-                        carryover_amount = carryover
-                        break
+    for row in grid:
+        if len(row) >= 2 and "1等" in row[0]:
+            carryover_amount = row[-1]
+            print(f"[🧾 추출된 1等 이월금]: {carryover_amount}")
+            if carryover_amount != "0円":
+                found = True
+            break
 
     if found:
         amount_num = int(carryover_amount.replace(",", "").replace("円", ""))
@@ -86,14 +77,13 @@ while table_index + 1 < len(tables) and section_index < len(sections):
             short = f"{amount_num // 10000}万円"
 
         carryover_results.append({
-            "name": toto_names[section_index],
+            "name": toto_names[i],
             "amount": carryover_amount,
             "short": short,
-            "table": table1
+            "table": table
         })
 
     table_index += 2
-    section_index += 1
 
 # 이월금 결과 정리
 if carryover_results:
