@@ -44,70 +44,89 @@ for i, (date_str, _) in enumerate(sections):
 
     while table_index < len(tables):
         table = tables[table_index]
-        table_index += 1
-
-        # 전치된 테이블 그리드 구성
         rows = table.find_all("tr")
-        grid = [[cell.get_text(strip=True) for cell in row.find_all(["th", "td"])] for row in rows]
+        grid = [[c.get_text(strip=True) for c in row.find_all(["th", "td"])] for row in rows]
         transposed = list(map(list, zip(*grid)))
 
-        print("[🔍 전치 테이블 구조 확인]")
-        for row in transposed:
-            print(" | ".join(row))
+        is_candidate = any("次回への繰越金" in row for row in grid)
 
-        if "次回への繰越金" not in [r[0] for r in grid]:
-            print(f"⚠️ [무시] table_index {table_index - 1} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
+        if not is_candidate:
+            print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
+            table_index += 1
             continue
+
+        print("[🔍 전치 테이블 구조 확인]")
+        for row in grid:
+            print(" | ".join(row))
 
         found = False
         carryover_amount = ""
+        round_label = grid[0][0] if grid and grid[0] else "第xxxx回"
 
-        # 헤더 열 기준으로 1等 위치 찾기
-        header_row = grid[0]
-        try:
-            index_1st = header_row.index("1等")
-        except ValueError:
-            continue
+        for col in transposed:
+            if col[0] == "等級" and "1等" in col:
+                index_1st = col.index("1等")
+                for row in grid:
+                    if row[0] == "次回への繰越金" and len(row) > index_1st:
+                        carryover = row[index_1st]
+                        print(f"1等 이월금: {carryover}")
+                        if carryover != "0円":
+                            found = True
+                            carryover_amount = carryover
+                            break
 
-        for row in grid:
-            if row[0] == "次回への繰越金" and len(row) > index_1st:
-                carryover = row[index_1st]
-                print(f"1等 이월금: {carryover}")
-                if carryover != "0円":
-                    found = True
-                    carryover_amount = carryover
-                    break
+            elif "次回への繰越金" in [c.replace(" ", "") for c in col]:
+                label_row = [r for r in grid if "次回への繰越金" in r]
+                if label_row:
+                    idx = grid.index(label_row[0])
+                    amount_row = grid[idx]
+                    index_1st = 1 if len(amount_row) > 1 else 0
+                    carryover = amount_row[index_1st]
+                    print(f"1等 이월금: {carryover}")
+                    if carryover != "0円":
+                        found = True
+                        carryover_amount = carryover
+                        break
 
         if found:
             amount_num = int(carryover_amount.replace(",", "").replace("円", ""))
-            if amount_num >= 100000000:
-                short = f"{amount_num // 100000000}億円"
-            else:
-                short = f"{amount_num // 10000}万円"
-
+            short = f"{amount_num // 100000000}億円" if amount_num >= 100000000 else f"{amount_num // 10000}万円"
             carryover_results.append({
                 "name": toto_names[i],
                 "amount": carryover_amount,
                 "short": short,
-                "table": table
+                "table": table,
+                "round": round_label
             })
 
-        break  # 다음 섹션으로 이동
+        table_index += 1
+        break
 
 # 이월금 결과 정리
 if carryover_results:
     issue_title = " / ".join([
-        f"{item['name']} {item['short']} 移越発生" for item in carryover_results
+        f"{item['round']} {item['name']} {item['short']} 移越発生" for item in carryover_results
     ])
 
     body_lines = []
     for item in carryover_results:
-        body_lines.append(f"### 🎯 {item['name']} (次回への繰越金: {item['amount']})")
+        body_lines.append(f"### 🎯 {item['round']} {item['name']} (次回への繰越金: {item['amount']})")
         rows = item["table"].find_all("tr")
+
+        parsed_rows = []
+        max_widths = []
         for row in rows:
             cols = row.find_all(["th", "td"])
             texts = [c.get_text(strip=True) for c in cols]
-            body_lines.append(" | ".join(texts))
+            parsed_rows.append(texts)
+            while len(max_widths) < len(texts):
+                max_widths.append(0)
+            for i, t in enumerate(texts):
+                max_widths[i] = max(max_widths[i], len(t))
+
+        for row in parsed_rows:
+            padded = [t.ljust(max_widths[i]) for i, t in enumerate(row)]
+            body_lines.append(" | ".join(padded))
         body_lines.append("")
 
     body_lines.append("📎 출처: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
