@@ -1,9 +1,9 @@
-name: Check Carryovers
+name: Check TOTO Carryovers
 
 on:
   schedule:
-    - cron: '37 5 * * *'  # 매일 오후 2:37 JST
-    - cron: '7 13 * * *'  # 매일 오후 10:07 JST
+    - cron: '37 5 * * *'  # 예: 매일 오후 2시 37분 JST
+    - cron: '7 13 * * *'  # 예: 매일 오후 10시 7분 JST
   workflow_dispatch:
 
 permissions:
@@ -22,11 +22,6 @@ jobs:
 
       - name: Install dependencies
         run: pip install beautifulsoup4 requests
-
-      - name: Run BIG carryover extractor
-        run: python extract_carryovers.py
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run TOTO carryover extractor
         run: python extract_toto_carryovers.py
