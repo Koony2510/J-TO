@@ -45,75 +45,57 @@ for i, (date_str, _) in enumerate(sections):
     while table_index < len(tables):
         table = tables[table_index]
         rows = table.find_all("tr")
-        grid = []
-        for row in rows:
-            cols = row.find_all(["th", "td"])
-            grid.append([c.get_text(strip=True) for c in cols])
+        grid = [[col.get_text(strip=True) for col in row.find_all(["th", "td"])] for row in rows]
 
-        # 전치하여 판별
-        transposed = list(map(list, zip(*grid)))
-        header = transposed[0] if transposed else []
-
-        if any("当せん金" in cell for cell in header):
-            print("[🔍 전치 테이블 구조 확인]")
+        # 가로형 판별: 첫 번째 행에 1等, 2等 등이 있음
+        if "1等" in grid[0]:
+            print(f"[🔍 전치 테이블 구조 확인]")
             for row in grid:
                 print(" | ".join(row))
+            header_row = grid[0]
+            index_1st = header_row.index("1等") if "1等" in header_row else -1
+            carryover_row = next((row for row in grid if row[0] == "次回への繰越金"), None)
 
-            found = False
-            carryover_amount = ""
-            round_title = grid[0][0] if grid and grid[0] else ""
+            if index_1st != -1 and carryover_row and len(carryover_row) > index_1st:
+                carryover = carryover_row[index_1st]
+                print(f"1等 이월금: {carryover}")
+                if carryover != "0円":
+                    amount_num = int(carryover.replace(",", "").replace("円", ""))
+                    short = f"{amount_num // 100000000}億円" if amount_num >= 100000000 else f"{amount_num // 10000}万円"
 
-            for col in transposed:
-                if col[0] == "次回への繰越金" and len(col) > 1:
-                    carryover = col[1]
-                    print(f"1等 이월금: {carryover}")
-                    if carryover != "0円":
-                        found = True
-                        carryover_amount = carryover
-                        break
+                    # 테이블 정렬 출력
+                    col_widths = [max(len(row[i]) if i < len(row) else 0 for row in grid) for i in range(len(grid[0]))]
+                    formatted = [" | ".join(cell.ljust(col_widths[idx]) for idx, cell in enumerate(row)) for row in grid]
 
-            if found:
-                amount_num = int(carryover_amount.replace(",", "").replace("円", ""))
-                if amount_num >= 100000000:
-                    short = f"{amount_num // 100000000}億円"
-                else:
-                    short = f"{amount_num // 10000}万円"
-
-                carryover_results.append({
-                    "name": toto_names[i],
-                    "amount": carryover_amount,
-                    "short": short,
-                    "table": table,
-                    "round": round_title
-                })
-
+                    carryover_results.append({
+                        "name": toto_names[i],
+                        "amount": carryover,
+                        "short": short,
+                        "table": formatted,
+                        "round": grid[0][0] if grid[0] else ""
+                    })
             table_index += 1
             break
         else:
             print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
+            print("[🔍 전치 테이블 구조 확인]")
+            for row in grid:
+                print(" | ".join(row))
             table_index += 1
 
 # 이월금 결과 정리
 if carryover_results:
-    issue_title = carryover_results[0]["round"] + " " + " / ".join(
-        [f"{item['name']} {item['short']} 移越発生" for item in carryover_results]
-    )
+    issue_title = " / ".join([
+        f"{item['round']} {item['name']} {item['short']} 移越発生" for item in carryover_results
+    ])
 
     body_lines = []
     for item in carryover_results:
         body_lines.append(f"### 🎯 {item['round']} {item['name']} (次回への繰越金: {item['amount']})")
-        rows = item["table"].find_all("tr")
-        grid = [[c.get_text(strip=True) for c in row.find_all(["th", "td"])] for row in rows]
-
-        # 각 열 너비 계산
-        col_widths = [max(len(row[i]) if i < len(row) else 0 for row in grid) for i in range(max(len(r) for r in grid))]
-
-        for row in grid:
-            line = " | ".join(f"{cell:<{col_widths[i]}}" for i, cell in enumerate(row))
-            body_lines.append(line)
+        body_lines.extend(item["table"])
         body_lines.append("")
 
-    body_lines.append("📎 出典: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
+    body_lines.append("📎 出처: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
 
     if github_repo and github_token:
         headers = {
