@@ -34,28 +34,22 @@ print(f"📊 감지된 결과 테이블 수: {len(tables)}\n")
 
 toto_names = ["toto", "mini toto-A", "mini toto-B", "toto GOAL3"]
 carryover_results = []
+
 table_index = 0
+section_index = 0
 
-for i, (date_str, _) in enumerate(sections):
+while table_index + 1 < len(tables) and section_index < len(sections):
+    date_str, _ = sections[section_index]
+
     if date_str != target_date:
+        table_index += 2
+        section_index += 1
         continue
 
-    print(f"\n🧩 [{toto_names[i]}] 結果発表日: {date_str}")
+    print(f"\n🧩 [{toto_names[section_index]}] 結果発表日: {date_str}")
 
-    if table_index + 1 >= len(tables):
-        continue
-
-    # table1이 실제 결과 테이블인지 검사
-    header_check = tables[table_index].find("tr")
-    if header_check and "等級" not in header_check.get_text():
-        print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
-        table_index += 1
-
-    if table_index >= len(tables):
-        continue
-
-    table1 = tables[table_index]      # 등급, 당첨수, 당첨금, 이월금
-    table2 = tables[table_index + 1]  # 경기결과용, 무시
+    table1 = tables[table_index]
+    table2 = tables[table_index + 1]
 
     # 첫 번째 테이블에서 정보 추출
     rows = table1.find_all("tr")
@@ -64,15 +58,14 @@ for i, (date_str, _) in enumerate(sections):
         cols = row.find_all(["th", "td"])
         grid.append([c.get_text(strip=True) for c in cols])
 
+    print("[🔍 전치 테이블 구조 확인]")
+    for row in grid:
+        print(" | ".join(row))
+
     found = False
     carryover_amount = ""
 
-    # 전치
     transposed = list(map(list, zip(*grid)))
-    print("[🔍 전치 테이블 구조 확인]")
-    for line in transposed:
-        print(" | ".join(line))
-
     for col in transposed:
         if col[0] == "等級" and "1等" in col:
             index_1st = col.index("1等")
@@ -93,13 +86,14 @@ for i, (date_str, _) in enumerate(sections):
             short = f"{amount_num // 10000}万円"
 
         carryover_results.append({
-            "name": toto_names[i],
+            "name": toto_names[section_index],
             "amount": carryover_amount,
             "short": short,
             "table": table1
         })
 
     table_index += 2
+    section_index += 1
 
 # 이월금 결과 정리
 if carryover_results:
