@@ -47,7 +47,6 @@ for i, (date_str, _) in enumerate(sections):
         rows = table.find_all("tr")
         grid = [[col.get_text(strip=True) for col in row.find_all(["th", "td"])] for row in rows]
 
-        # 가로형 판별: 첫 번째 행에 1等, 2等 등이 있음
         if "1等" in grid[0]:
             print(f"[🔍 전치 테이블 구조 확인]")
             for row in grid:
@@ -92,10 +91,12 @@ if carryover_results:
     body_lines = []
     for item in carryover_results:
         body_lines.append(f"### 🎯 {item['round']} {item['name']} (次回への繰越金: {item['amount']})")
+        body_lines.append("```")
         body_lines.extend(item["table"])
+        body_lines.append("```")
         body_lines.append("")
 
-    body_lines.append("📎 出처: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
+    body_lines.append("📎 出処: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
 
     if github_repo and github_token:
         headers = {
