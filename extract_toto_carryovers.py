@@ -44,48 +44,35 @@ for i, (date_str, _) in enumerate(sections):
 
     while table_index < len(tables):
         table = tables[table_index]
+        rows = table.find_all("tr")
+        grid = [[c.get_text(strip=True) for c in row.find_all(["th", "td"])] for row in rows]
 
-        # 유효한 당첨 결과 테이블인지 검사
-        is_valid = False
-        for row in table.find_all("tr"):
-            cells = [c.get_text(strip=True) for c in row.find_all(["th", "td"])]
-            if "1等" in cells or "次回への繰越金" in cells:
-                is_valid = True
-                break
-
-        if not is_valid:
+        # 경기결과용 테이블 탐지 (열 수가 많고 특정 키워드 포함)
+        if any("試合結果" in cell for row in grid for cell in row):
             print(f"⚠️ [무시] table_index {table_index} 는 경기 정보용 테이블로 추정됨. 다음 테이블 사용.")
             table_index += 1
             continue
 
-        # 유효한 경우 파싱 진행
-        rows = table.find_all("tr")
-        grid = []
-        for row in rows:
-            cols = row.find_all(["th", "td"])
-            grid.append([c.get_text(strip=True) for c in cols])
+        print("[🔍 전치 테ーブル 구조 확인]")
+        for row in grid:
+            print(" | ".join(row))
 
         found = False
         carryover_amount = ""
 
-        # 전치
         transposed = list(map(list, zip(*grid)))
-        print("[🔍 전치 테이블 구조 확인]")
-        for t_row in transposed:
-            print(" | ".join(t_row))
-
         for col in transposed:
             if col[0] == "等級" and "1等" in col:
                 index_1st = col.index("1等")
                 for row in grid:
                     if row[0] == "次回への繰越金" and len(row) > index_1st:
                         carryover = row[index_1st]
-                        print(f"1等 이월금: {carryover}")
+                        print(f"➡️ 1等 이월금: {carryover}")
                         if carryover != "0円":
+                            print(f"✅ 이월금 발견: {carryover} → 이슈 생성 대상입니다.")
                             found = True
                             carryover_amount = carryover
-                            break
-
+                        break
         if found:
             amount_num = int(carryover_amount.replace(",", "").replace("円", ""))
             if amount_num >= 100000000:
@@ -101,7 +88,7 @@ for i, (date_str, _) in enumerate(sections):
             })
 
         table_index += 1
-        break  # 한 종목당 첫 유효 테이블만 처리
+        break  # 하나만 처리하고 빠져나오기
 
 # 이월금 결과 정리
 if carryover_results:
