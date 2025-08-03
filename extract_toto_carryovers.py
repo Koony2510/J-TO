@@ -60,13 +60,20 @@ for i, (date_str, _) in enumerate(sections):
 
     # 전치
     transposed = list(map(list, zip(*grid)))
+
+    # 디버깅용 전체 전치 출력
+    print("\n[🔍 전치 테이블 구조 확인]")
+    for row in transposed:
+        print(" | ".join(row))
+
     for col in transposed:
         if col[0] == "等級" and "1等" in col:
             index_1st = col.index("1等")
+            print(f"[🧪 DEBUG] '1等' 위치 인덱스: {index_1st}")
             for row in grid:
-                if row[0] == "次回への繰越金" and len(row) > index_1st:
+                if row[0].strip() == "次回への繰越金" and len(row) > index_1st:
                     carryover = row[index_1st]
-                    print(f"1等 이월금: {carryover}")
+                    print(f"[🟨 감지된 이월금] 1等: {carryover}")
                     if carryover != "0円":
                         found = True
                         carryover_amount = carryover
@@ -104,7 +111,7 @@ if carryover_results:
             body_lines.append(" | ".join(texts))
         body_lines.append("")
 
-    body_lines.append("📎 출처: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
+    body_lines.append("📎 出処: [スポーツくじ公式](http://www.toto-dream.com/dci/I/IPB/IPB01.do?op=initLotResultDettoto&popupDispDiv=disp)")
 
     if github_repo and github_token:
         headers = {
